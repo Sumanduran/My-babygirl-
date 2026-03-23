@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Motor Ride Booking</title>
+
+<style>
+
+body{
+margin:0;
+font-family:Arial;
+background:#111;
+color:white;
+display:flex;
+justify-content:center;
+}
+
+.app{
+max-width:420px;
+width:100%;
+height:100vh;
+background:black;
+}
+
+.screen{
+display:flex;
+flex-direction:column;
+padding:20px;
+gap:10px;
+}
+
+.hidden{
+display:none;
+}
+
+h2{
+text-align:center;
+}
+
+input,select{
+padding:12px;
+border-radius:8px;
+border:none;
+}
+
+button{
+padding:12px;
+border:none;
+border-radius:8px;
+background:#ff7a00;
+color:white;
+font-size:16px;
+cursor:pointer;
+}
+
+button:hover{
+background:#ff5c00;
+}
+
+#map{
+height:50vh;
+width:100%;
+}
+
+.ridePanel{
+padding:15px;
+background:#111;
+display:flex;
+flex-direction:column;
+gap:8px;
+}
+
+#fare{
+font-weight:bold;
+font-size:18px;
+}
+
+#status{
+color:lightgreen;
+font-size:14px;
+}
+
+.driverBox{
+background:#1a1a1a;
+padding:10px;
+border-radius:8px;
+font-size:14px;
+}
+
+.small{
+font-size:12px;
+color:gray;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="app">
+
+<!-- LOGIN -->
+<div id="loginScreen" class="screen">
+<h2>🏍 Motor Ride</h2>
+<input type="email" id="email" placeholder="Email">
+<input type="password" id="password" placeholder="Password">
+<button onclick="login()">Login</button>
+<p onclick="showSignup()" style="text-align:center;cursor:pointer">Create Account</p>
+</div>
+
+<!-- SIGNUP -->
+<div id="signupScreen" class="screen hidden">
+<h2>Create Account</h2>
+<input id="name" placeholder="Full Name">
+<input id="signupEmail" placeholder="Email">
+<input type="password" id="signupPassword" placeholder="Password">
+<button onclick="signup()">Signup</button>
+<p onclick="showLogin()" style="text-align:center;cursor:pointer">Back to Login</p>
+</div>
+
+<!-- APP -->
+<div id="appScreen" class="hidden">
+
+<div id="map"></div>
+
+<div class="ridePanel">
+
+<input id="pickup" placeholder="Pickup location">
+<button onclick="useMyLocation()">📍 Use My Location</button>
+
+<input id="dropoff" placeholder="Dropoff location">
+
+<select id="payment">
+<option>Cash</option>
+<option>GCash</option>
+<option>Credit Card</option>
+</select>
+
+<button onclick="calculateRoute()">Calculate Fare</button>
+
+<div id="fare">Fare: ₱0</div>
+
+<button onclick="bookRide()">Book Ride</button>
+
+<div class="driverBox hidden" id="driverBox">
+👨‍✈️ <b id="driverName"></b><br>
+Plate: <span id="plate"></span><br>
+ETA: <span id="eta"></span>
+</div>
+
+<div id="status"></div>
+
+</div>
+
+</div>
+
+</div>
+
+<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&libraries=places"></script>
+
+<script>
+
+let map;
+let directionsService;
+let directionsRenderer;
+
+let distanceKm = 0;
+let baseFare = 25;
+let pricePerKm = 10;
+
+let pickupAutocomplete, dropoffAutocomplete;
+
+let driverMarker;
+let routePath = [];
+let routeIndex = 0;
+
+function initMap(){
+
+map = new google.maps.Map(document.getElementById("map"),{
+center:{lat:7.0731,lng:125.6128},
+zoom:13
+});
+
+directionsService = new google.maps.DirectionsService();
+directionsRenderer = new google.maps.DirectionsRenderer();
+directionsRenderer.setMap(map);
+
+// AUTOCOMPLETE
+pickupAutocomplete = new google.maps.places.Autocomplete(document.getElementById("pickup"));
+dropoffAutocomplete = new google.maps.places.Autocomplete(document.getElementById("dropoff"));
+
+}
+
+window.onload = initMap;
+
+// LOGIN
+function login(){
+let email=document.getElementById("email").value;
+let pass=document.getElementById("password").value;
+
+if(email && pass){
+document.getElementById("loginScreen").classList.add("hidden");
+document.getElementById("appScreen").classList.remove("hidden");
+}else{
+alert("Enter email and password")
+}
+}
+
+// SIGNUP
+function signup(){
+alert("Account created successfully!")
+showLogin()
+}
+
+function showSignup(){
+document.getElementById("loginScreen").classList.add("hidden")
+document.getElementById("signupScreen").classList.remove("hidden")
+}
+
+function showLogin(){
+document.getElementById("signupScreen").classList.add("hidden")
+document.getElementById("loginScreen").classList.remove("hidden")
+}
+
+// GPS LOCATION
+function useMyLocation(){
+navigator.geolocation.getCurrentPosition(position=>{
+let lat = position.coords.latitude;
+let lng = position.coords.longitude;
+
+let latlng = new google.maps.LatLng(lat,lng);
+
+let geocoder = new google.maps.Geocoder();
+geocoder.geocode({location:latlng}, (results,status)=>{
+if(status==="OK"){
+document.getElementById("pickup").value = results[0].formatted_address;
+map.setCenter(latlng);
+}
+});
+
+});
+}
+
+// ROUTE + FARE
+function calculateRoute(){
+
+let pickup=document.getElementById("pickup").value
+let dropoff=document.getElementById("dropoff").value
+
+if(!pickup || !dropoff){
+alert("Enter pickup and dropoff")
+return
+}
+
+directionsService.route({
+origin:pickup,
+destination:dropoff,
+travelMode:"DRIVING"
+}, function(result,status){
+
+if(status==="OK"){
+
+directionsRenderer.setDirections(result)
+
+distanceKm = result.routes[0].legs[0].distance.value / 1000
+
+let fare=Math.round(baseFare + (distanceKm * pricePerKm))
+
+document.getElementById("fare").innerHTML =
+"Fare: ₱" + fare + " (" + distanceKm.toFixed(1) + " km)"
+
+routePath = result.routes[0].overview_path;
+
+}
+
+})
+
+}
+
+// BOOK RIDE
+function bookRide(){
+
+document.getElementById("status").innerHTML = "🔍 Searching for driver..."
+document.getElementById("driverBox").classList.add("hidden")
+
+setTimeout(()=>{
+
+// DRIVER INFO
+let names = ["Juan Dela Cruz","Mark Santos","Leo Ramirez"];
+let plates = ["ABC123","XYZ789","MOTO456"];
+
+let i = Math.floor(Math.random()*3);
+
+document.getElementById("driverName").innerText = names[i];
+document.getElementById("plate").innerText = plates[i];
+document.getElementById("eta").innerText = "3 mins";
+
+document.getElementById("driverBox").classList.remove("hidden");
+
+document.getElementById("status").innerHTML = "✅ Driver accepted. Heading to pickup..."
+
+startDriverSimulation();
+
+},3000)
+
+}
+
+// DRIVER MOVEMENT
+function startDriverSimulation(){
+
+routeIndex = 0;
+
+driverMarker = new google.maps.Marker({
+position:routePath[0],
+map:map,
+icon:"https://maps.google.com/mapfiles/kml/shapes/motorcycling.png"
+});
+
+// MOVE DRIVER
+let interval = setInterval(()=>{
+
+if(routeIndex < routePath.length){
+
+driverMarker.setPosition(routePath[routeIndex]);
+routeIndex++;
+
+}else{
+
+clearInterval(interval);
+
+document.getElementById("status").innerHTML = "🏁 Ride Completed!";
+document.getElementById("eta").innerText = "Arrived";
+
+}
+
+},500)
+
+}
+
+</script>
+
+</body>
+</html>
